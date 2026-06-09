@@ -1,0 +1,6 @@
+langchain
+langgraph
+langchain-openrouter
+pymongo 
+python-dotenv
+python-telegram-bot

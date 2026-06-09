@@ -1,0 +1,4 @@
+1) nvidia/nemotron-nano-9b-v2:free
+available features:{'name': 'Nemotron Nano 9B V2 (free)', 'release_date': '2025-09-05', 'last_updated': '2025-08-18', 'open_weights': True, 'max_input_tokens': 128000, 'max_output_tokens': 128000, 'text_inputs': True, 'image_inputs': False, 'audio_inputs': False, 'video_inputs': False, 'text_outputs': True, 'image_outputs': False, 'audio_outputs': False, 'video_outputs': False, 'reasoning_output': True, 'tool_calling': True, 'structured_output': True, 'attachment': False, 'temperature': True}
+
+2) 
