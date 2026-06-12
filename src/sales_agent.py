@@ -153,24 +153,25 @@ def follow_up(query,state:State):
         return []
 
 # print(final_prods("show product a5"))
+# sales_agent.py — agent() must check if user is mid-flow
 def agent(query, user_id):
-    state={
-        "message":[],
-        "price":None,
-        "user_id":user_id,
-        "query_result":None,
+    state = {
+        "messages": [],   # ← was "message" (bug #2, see below)
+        "price": None,
+        "user_id": user_id,
         "variants": None
     }
-    result = structured_llm.invoke(query)
-    state["query_result"]=result
-    print(result)
-    if result.intent==Intent.BROWSE_PRODUCTS:
-        return final_prods(result,state)
-        
-    if result.intent==Intent.BUY_PRODUCT:
-        return buy_response(state)
-    if result.intent==Intent.FOLLOW_UP_QUESTIONS:
-        return follow_up(query,state)
-    return ["I am having trouble understanding that. Could you rephrase?"]
     
-# print(llm.invoke("what is ai"))
+    # Check if user is already in a buy flow (interrupted)
+    memory = short_term_memory.get(user_id)
+    if memory and memory.get("buy_flow_active"):
+        return buy_response(state, resume_value=query)  # Resume with their reply
+    
+    result = structured_llm.invoke(query)
+    if result.intent == Intent.BROWSE_PRODUCTS:
+        return final_prods(result, state)
+    if result.intent == Intent.BUY_PRODUCT:
+        return buy_response(state)  # Fresh start
+    if result.intent == Intent.FOLLOW_UP_QUESTIONS:
+        return follow_up(query, state)
+    return ["I am having trouble understanding that. Could you rephrase?"]

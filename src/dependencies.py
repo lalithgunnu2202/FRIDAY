@@ -79,7 +79,7 @@ class State(TypedDict):
     messages:Annotated[list,add_messages]
     price:  float | None=None
     user_id: str|None=None
-    query_result: productQuery | None=None
+    # query_result: productQuery | None=None
     variants:dict|None=None
     approval_status:bool=False
     # memory= dict | None=None

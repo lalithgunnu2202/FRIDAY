@@ -87,7 +87,9 @@ def take_address(state:State):
     memory=short_term_memory.get(state["user_id"])
     prod_id=memory["prod_id"]
     order_id=f"ORD-{str(uuid.uuid4())[:6].upper()}"
-    orders.update_one(order_id,**{
+    orders.update_one(
+    {"order_id": order_id},
+    {"$set": {
         "prod_id":prod_id,
         "recipient_name": name,
         "phone": phone,
@@ -96,8 +98,10 @@ def take_address(state:State):
         "state": state_name,
         "pincode": pincode,
         "payment_status":0
-    })
-    full_address="\n\n".join(name,phone,address,city,state_name,pincode)
+    }},
+    upsert=True
+)
+    full_address="\n\n".join([name,phone,address,city,state_name,pincode])
     msg=f"""These are your order details.\nOrder ID: {order_id}\nPrice:{state['price']}\nAddress:{full_address}\nWe have successfully saved your Address for this order.\n\nFinish the payment process by writing "I want to pay" to confirm the order."""
     return {
         "messages":[AIMessage(content=msg)]
@@ -111,7 +115,7 @@ def cancel_order(state:State):
     }
 
 def buy_router(state:State):
-    if state["status"]:
+    if state["approval_status"]:
         return "take_address"
     else:
         return "cancel_order"
@@ -139,17 +143,27 @@ buy_graph = builder.compile(
     checkpointer=InMemorySaver()
 )
 
-def buy_response(state:State):
-    result = buy_graph.invoke(
-        state,
-        config={
-            "configurable": {
-                "thread_id": state["user_id"]
-            }
-        }
-    )
+# buy_agent.py
+from langgraph.types import Command
 
-    return result
+def buy_response(state: State, resume_value: str = None):
+    config = {"configurable": {"thread_id": state["user_id"]}}
+
+    if resume_value is not None:
+        result = buy_graph.invoke(Command(resume=resume_value), config=config)
+    else:
+        result = buy_graph.invoke(state, config=config)
+
+    # Graph paused at an interrupt()
+    if "__interrupt__" in result:
+        interrupt_prompt = result["__interrupt__"][0].value  # the string you passed to interrupt()
+        short_term_memory.update(state["user_id"], buy_flow_active=True)
+        return [interrupt_prompt]
+
+    # Graph finished normally
+    short_term_memory.update(state["user_id"], buy_flow_active=False)
+    messages = result.get("messages", [])
+    return [messages[-1].content] if messages else ["Order complete!"]
 # def run(query):
 #     state={
 #             "messages":[],
