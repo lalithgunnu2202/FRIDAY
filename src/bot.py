@@ -10,7 +10,7 @@ import os
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Now you can import 'ans' directly without dots or 'online'
-from sales_agent import sales_agent
+from sales_agent import agent
 # from src.components.main import send_text
 # from src.logger import logging
 
@@ -55,7 +55,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
     # Show "typing" indicator
     await update.message.chat.send_action(action="typing")
     try:
-        response = sales_agent(user_text,user_ph_no)
+        response = agent(user_text,user_ph_no)
         
         # Send response (Telegram has 4096 character limit)
         # if len(response) > 4000:
