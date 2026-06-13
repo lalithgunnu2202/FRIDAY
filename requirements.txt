@@ -4,3 +4,7 @@ langchain-openrouter
 pymongo 
 python-dotenv
 python-telegram-bot
+razorpay
+Flask
+langchain-google-genai
+langsmith

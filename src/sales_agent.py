@@ -164,7 +164,7 @@ def agent(query, user_id: str):
     }
 
     memory = short_term_memory.get(user_id)
-
+    query_2=f"""this is previous product id {memory.get("prod_id")}\nthis is current query:{query}"""
     # Check active flows ONLY if not a payment intent
     # (prevents stale buy_flow from hijacking payment)
     if memory and memory.get("pay_flow_active"):
@@ -182,7 +182,7 @@ def agent(query, user_id: str):
             # return buy_response(state)
         return buy_response(state, resume_value=query)
 
-    result = structured_llm.invoke(query)
+    result = structured_llm.invoke(query_2)
     print(result)
     if result.intent == Intent.BROWSE_PRODUCTS:
         return final_prods(result, state)
