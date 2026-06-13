@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from langchain_openrouter import ChatOpenRouter
 from enum import Enum
 from buy_agent import buy_response
+from payment_agent import pay_response
 from dependencies import llm, State,products, short_term_memory, Intent,productQuery
 
 
@@ -119,7 +120,7 @@ def final_prods(result:str,state:State):
         price=prod["price"]
         img_link=prod["image_src"]
         prod_id=prod["prod_id"]
-        short_term_memory.update(state["user_id"],**{"prod_id":prod_id})
+        short_term_memory.update(state.get("user_id"),**{"prod_id":prod_id})
         msg=f"name: {title} \ndescription: {desc} \nprice: {price} product id: {prod_id}"
         return [msg,img_link]
     else:
@@ -128,9 +129,9 @@ def final_prods(result:str,state:State):
 
 def follow_up(query,state:State):
     """this is a follow-up question answering tool. if query looks like a followup question about any product. choose this tool"""
-    memory=short_term_memory.get(state["user_id"])
+    memory=short_term_memory.get(state.get("user_id"))
     prod_id=memory["prod_id"]
-    short_term_memory.update(state["user_id"],**{"prod_id":prod_id})
+    short_term_memory.update(state.get("user_id"),**{"prod_id":prod_id})
     prod=products.find_one(
             {"prod_id": prod_id},
             {"_id": 0}
@@ -154,24 +155,41 @@ def follow_up(query,state:State):
 
 # print(final_prods("show product a5"))
 # sales_agent.py — agent() must check if user is mid-flow
-def agent(query, user_id):
+def agent(query, user_id: str):
     state = {
-        "messages": [],   # ← was "message" (bug #2, see below)
+        "messages": [],
         "price": None,
         "user_id": user_id,
-        "variants": None
+        "variants": None,
     }
-    
-    # Check if user is already in a buy flow (interrupted)
+
     memory = short_term_memory.get(user_id)
+
+    # Check active flows ONLY if not a payment intent
+    # (prevents stale buy_flow from hijacking payment)
+    if memory and memory.get("pay_flow_active"):
+        # Let LLM check if they actually want to pay instead
+        # result = structured_llm.invoke(query)
+        # if result.intent == Intent.PAYMENT:
+        short_term_memory.update(user_id, pay_flow_active=False)
+            # return pay_response(state)
+        return pay_response(state, resume_value=query)
+
     if memory and memory.get("buy_flow_active"):
-        return buy_response(state, resume_value=query)  # Resume with their reply
-    
+        result = structured_llm.invoke(query)
+        # if result.intent == Intent.BUY_PRODUCT:
+        short_term_memory.update(user_id, buy_flow_active=False)
+            # return buy_response(state)
+        return buy_response(state, resume_value=query)
+
     result = structured_llm.invoke(query)
+    print(result)
     if result.intent == Intent.BROWSE_PRODUCTS:
         return final_prods(result, state)
     if result.intent == Intent.BUY_PRODUCT:
-        return buy_response(state)  # Fresh start
+        return buy_response(state)
     if result.intent == Intent.FOLLOW_UP_QUESTIONS:
         return follow_up(query, state)
+    if result.intent == Intent.PAYMENT:
+        return pay_response(state)
     return ["I am having trouble understanding that. Could you rephrase?"]

@@ -2,26 +2,35 @@ from dependencies import State,products, short_term_memory
 from langgraph.types import interrupt
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, AIMessage
+from payment_agent import create_payment_link
 
 # VARIANTS=["size","color"]
 
-def choose_variants(state:State):
-    selected_var={}
-    memory=short_term_memory.get(state["user_id"])
-    prod=products.find_one({"prod_id": memory["prod_id"]},
-            {"_id": 0})
+def choose_variants(state: State):
+    user_id = state.get("user_id")
+    memory = short_term_memory.get(user_id)
+
+    if not memory or not memory.get("prod_id"):
+        return {"messages": [AIMessage(content="Session expired. Please select a product again.")],
+                "user_id": user_id}
+
+    prod = products.find_one({"prod_id": memory["prod_id"]}, {"_id": 0})
+    if not prod:
+        return {"messages": [AIMessage(content="Product no longer available.")],
+                "user_id": user_id}
+
+    selected_var = {}
     available_variants = prod.get("variants", {})
     for variant_name, options in available_variants.items():
-        resp=interrupt(f"choose a {variant_name} from the available {options}")
-        selected_var[variant_name]=resp
-    return {
-        "variants":selected_var
-    }
+        resp = interrupt(f"choose a {variant_name} from the available {options}")
+        selected_var[variant_name] = resp
+    return {"variants": selected_var, "user_id": user_id}
 
 def price_decider(state: State):
-    memory = short_term_memory.get(state["user_id"])
-
+    memory = short_term_memory.get(state.get("user_id"))
+    if not memory or not memory.get("prod_id"):  # ← guard
+        return {"price": None}
     prod_id = memory["prod_id"]
 
     prod = products.find_one(
@@ -60,7 +69,7 @@ def price_decider(state: State):
     }
 
 def approve(state:State):
-    memory=short_term_memory.get(state["user_id"])
+    memory=short_term_memory.get(state.get("user_id"))
     prod_id=memory["prod_id"]
     prod = products.find_one(
         {"prod_id": prod_id},
@@ -78,33 +87,39 @@ import uuid
 def take_address(state:State):
     from dependencies import get_collection
     orders=get_collection("Spes-AI","Orders")
-    name = interrupt("Recipient Name?")
-    phone = interrupt("Phone Number?")
-    address = interrupt("Street Address?")
-    city = interrupt("City?")
-    state_name = interrupt("State?")
-    pincode = interrupt("Pincode?")
-    memory=short_term_memory.get(state["user_id"])
+    address=interrupt("Enter the address in this format\nName: John Doe\n"
+        "Phone: 9876543210\n"
+        "Address: 123 Main St\n"
+        "City: Mumbai\n"
+        "State: Maharashtra\n"
+        "Pincode: 400001")
+    memory=short_term_memory.get(state.get("user_id"))
+    # short_term_memory.update(state.get("user_id"), buy_flow_active=False, pay_flow_active=False)
     prod_id=memory["prod_id"]
     order_id=f"ORD-{str(uuid.uuid4())[:6].upper()}"
+    payment = create_payment_link(
+        order_id=order_id,
+        amount=state["price"],
+        customer_name="Lark-AI",
+        customer_phone="7893867545"
+    )
     orders.update_one(
-    {"order_id": order_id},
-    {"$set": {
-        "prod_id":prod_id,
-        "recipient_name": name,
-        "phone": phone,
-        "street_address": address,
-        "city": city,
-        "state": state_name,
-        "pincode": pincode,
-        "payment_status":0
-    }},
-    upsert=True
-)
-    full_address="\n\n".join([name,phone,address,city,state_name,pincode])
-    msg=f"""These are your order details.\nOrder ID: {order_id}\nPrice:{state['price']}\nAddress:{full_address}\nWe have successfully saved your Address for this order.\n\nFinish the payment process by writing "I want to pay" to confirm the order."""
+        {"order_id": order_id},
+        {"$set": {
+            "address":address,
+            "price":state["price"],
+            "prod_id":prod_id,
+            "payment_status":0,
+            "payment_link_id": payment["payment_link_id"],
+            "payment_url": payment["payment_url"]
+        }},
+        upsert=True
+    )
+    short_term_memory.update(state.get("user_id"),**{"price":state["price"]})
+    msg=f"""These are your order details.\nOrder ID: {order_id}\nPrice:{state['price']}\nAddress:{address}\nWe have successfully saved your Address for this order.\n\nFinish the payment process by writing "I want to pay" to confirm the order."""
     return {
-        "messages":[AIMessage(content=msg)]
+        "messages":[AIMessage(content=msg)],
+        "payment_url":payment["payment_url"]
     }
 
 
@@ -120,16 +135,19 @@ def buy_router(state:State):
     else:
         return "cancel_order"
 
+def init_state(state: State):
+    return {"user_id": state.get("user_id")}
 
 builder = StateGraph(State)
-
+builder.add_node("init_state", init_state)
 builder.add_node("choose_variants", choose_variants)
 builder.add_node("price_decider", price_decider)
 builder.add_node("approve", approve)
 builder.add_node("take_address", take_address)
 builder.add_node("cancel_order", cancel_order)
 
-builder.add_edge(START, "choose_variants")
+builder.add_edge(START,"init_state")
+builder.add_edge("init_state", "choose_variants")
 builder.add_edge("choose_variants", "price_decider")
 builder.add_edge("price_decider", "approve")
 builder.add_conditional_edges("approve",buy_router,{
@@ -147,21 +165,24 @@ buy_graph = builder.compile(
 from langgraph.types import Command
 
 def buy_response(state: State, resume_value: str = None):
-    config = {"configurable": {"thread_id": state["user_id"]}}
+    config = {"configurable": {"thread_id": state.get("user_id")}}
+    user_id = state.get("user_id")
 
-    if resume_value is not None:
-        result = buy_graph.invoke(Command(resume=resume_value), config=config)
-    else:
+    try:
+        if resume_value is not None:
+            result = buy_graph.invoke(Command(resume=resume_value), config=config)
+        else:
+            result = buy_graph.invoke(state, config=config)
+    except Exception as e:
+        short_term_memory.update(user_id, buy_flow_active=False)
         result = buy_graph.invoke(state, config=config)
 
-    # Graph paused at an interrupt()
     if "__interrupt__" in result:
-        interrupt_prompt = result["__interrupt__"][0].value  # the string you passed to interrupt()
-        short_term_memory.update(state["user_id"], buy_flow_active=True)
-        return [interrupt_prompt]
+        short_term_memory.update(user_id, buy_flow_active=True)  # still in progress
+        return [result["__interrupt__"][0].value]
 
-    # Graph finished normally
-    short_term_memory.update(state["user_id"], buy_flow_active=False)
+    # Graph reached END — clean up
+    short_term_memory.update(user_id, buy_flow_active=False, pay_flow_active=False)
     messages = result.get("messages", [])
     return [messages[-1].content] if messages else ["Order complete!"]
 # def run(query):

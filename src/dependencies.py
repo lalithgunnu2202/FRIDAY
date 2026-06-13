@@ -8,15 +8,16 @@ from typing_extensions import Annotated, TypedDict
 from langgraph.graph.message import add_messages
 from datetime import datetime,timezone
 from pydantic import BaseModel, Field
-from langchain_openrouter import ChatOpenRouter
+from langchain.chat_models import init_chat_model
 from enum import Enum
 from langgraph.types import Command
-from typing import Literal
+from typing import Literal, Optional
 from langgraph.graph.state import StateGraph,START,END
 
 
 load_dotenv()
 os.environ["OPENROUTER_API_KEY"]=os.getenv("CUSTOM_API_KEY")
+os.environ["GEMINI_API_KEY"]=os.getenv("GEMINI_API_KEY")
 
 
 
@@ -26,7 +27,7 @@ os.environ["OPENROUTER_API_KEY"]=os.getenv("CUSTOM_API_KEY")
 # from support_agent import support_agent
 
 
-llm = ChatOpenRouter(model="nvidia/nemotron-nano-9b-v2:free")
+llm = init_chat_model(model="openai/gpt-oss-120b:free", model_provider="openrouter")
 print(llm)
 
 def get_collection(db_name:str,col_name:str)->Collection:
@@ -55,6 +56,7 @@ class Intent(str, Enum):
     BROWSE_PRODUCTS="get_products"
     FOLLOW_UP_QUESTIONS="follow_up"
     BUY_PRODUCT="buy_product"
+    PAYMENT="payment"
 
 class productQuery(BaseModel):
     product_type: str | None=None
@@ -64,22 +66,23 @@ class productQuery(BaseModel):
     intent: Intent | None = Field(
         default=None,
         description="""
-        User intent.
-
+        User intent classification:
+        strictly classify them to one of the following intents. dont leave it none
         get_products: User wants product recommendations or product search or show <type>.
         follow_up: User is asking a question regarding previous product. either by mentioning it or without mentioning it
-        buy_product: user wants to buy the product
+        buy_product: user wants to buy the product.
+        payment: if user wants to pay. if they want to make the payment
         """
     )
 
 short_term_memory=MemoryManager(get_collection("Spes-AI","short-term-memory"))
 products=get_collection("Spes-AI","products")
 
-class State(TypedDict):
-    messages:Annotated[list,add_messages]
-    price:  float | None=None
-    user_id: str|None=None
-    # query_result: productQuery | None=None
-    variants:dict|None=None
-    approval_status:bool=False
-    # memory= dict | None=None
+class State(TypedDict, total=False):      # ← add total=False
+    messages: Annotated[list, add_messages]
+    price: Optional[float]
+    user_id: Optional[str]
+    variants: Optional[dict]
+    approval_status: bool
+    order_id: Optional[str]
+    payment_url: Optional[str]

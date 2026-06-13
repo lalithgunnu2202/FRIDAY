@@ -51,12 +51,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text=None):
     user_text = text or update.message.text
     user_ph_no = update.effective_user.id
+    # chat_id = update.effective_chat.id
     # logging.info("Recieved user text")
     # Show "typing" indicator
     await update.message.chat.send_action(action="typing")
     try:
-        response = agent(user_text,user_ph_no)
-        
+        print(user_ph_no)
+        response = agent(user_text,str(user_ph_no))
+        print(response)
         # Send response (Telegram has 4096 character limit)
         # if len(response) > 4000:
         #         response = response[:4000] + "...\n\n[Response truncated due to length]"
@@ -67,12 +69,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
                 caption=response[0]
             )
         elif len(response)==1:
+            print(response[0])
             await update.message.reply_text(response[0])
 
     except Exception as e:
         error_msg = f"❌ Error: {str(e)[:100]}..."
         # logging.error("Error while process the user request!!")
         # More specific error messages
+        print(str(e))
         if "rate limit" in str(e).lower() or "429" in str(e):
             error_msg = "⚠️ Rate limit exceeded. Free models allow ~2 requests per minute. Please wait a moment."
         elif "404" in str(e):
