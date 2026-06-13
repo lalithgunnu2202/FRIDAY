@@ -65,28 +65,47 @@ def create_payment_link(
         "payment_url": payment_link["short_url"]
     }
 
-def payment_agent(state:State):
-    order_id=state["order_id"]
-    msg = f"""
+def payment_agent(state: State):
+    order_id = state["order_id"]
+    
+    # 1. Pause the graph and wait for user input
+    msg1 = interrupt(f"""
     Order ID: {order_id}
 
     Amount: ₹{state['price']}
 
     Complete payment:
-
     {state["payment_url"]}
 
-    After payment, your order will be automatically confirmed.
-    """
+    After payment, your order will be automatically confirmed. Please type "paid" to get details.
+    """)
+
+    # 2. Check what the user typed (optional, but good for validation)
+    user_input = msg1.lower().strip()
+    
+    # 3. Query the database CORRECTLY using a dictionary
+    orders = get_collection("Spes-AI", "Orders")
+    order = orders.find_one({"order_id": order_id})
+
+    # 4. Safely check if the order exists AND the payment status is updated
+    if order and order.get("payment_status") == 1:
+        msg2 = f"""
+        Order ID: {order_id}\n\nAmount: ₹{state['price']}\n\nPayment is successful. We will contact you as we dispatch the order.\n\nHave a great shopping!
+        """
+        return {"messages": [AIMessage(content=msg2)]}
+        
+    else:
+        msg3 = f"""
+        Order ID: {order_id}\n\nAmount: ₹{state['price']}\n\nIt seems like your payment hasn't been received yet or failed. You can try again using the same link.
+        """
+        return {"messages": [AIMessage(content=msg3)]}
+
     # orders=get_collection("Spes-AI","Orders")
     # orders.update_one(
     #     {"order_id": order_id},
     #     {"$set": {"chat_id": state["chat_id"]}}
     # )
 
-    return {
-        "messages":[AIMessage(content=msg)]
-    }
 def init_state(state: State):
     return {"user_id": state.get("user_id")}
 pay_build=StateGraph(State)

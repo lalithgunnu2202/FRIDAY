@@ -96,12 +96,12 @@ def take_address(state:State):
     memory=short_term_memory.get(state.get("user_id"))
     # short_term_memory.update(state.get("user_id"), buy_flow_active=False, pay_flow_active=False)
     prod_id=memory["prod_id"]
-    order_id=f"ORD-{str(uuid.uuid4())[:6].upper()}"
+    order_id=f"ORD{str(uuid.uuid4())[:4].upper()}"
     payment = create_payment_link(
         order_id=order_id,
         amount=state["price"],
         customer_name="Lark-AI",
-        customer_phone="7893867545"
+        customer_phone=None
     )
     orders.update_one(
         {"order_id": order_id},
