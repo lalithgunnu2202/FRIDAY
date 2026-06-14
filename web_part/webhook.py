@@ -1,5 +1,7 @@
 from flask import Flask, request
-from dependencies import get_collection
+from pymongo import MongoClient
+from pymongo.collection import Collection
+import os
 # import asyncio
 # from payment_bot import send_confirmation_message
 
@@ -7,6 +9,12 @@ from dependencies import get_collection
 app = Flask(__name__)
 
 import json
+def get_collection(db_name:str,col_name:str)->Collection:
+    client = MongoClient(os.getenv("MONGO_URI"), serverSelectionTimeoutMS=5000)
+    db=client[db_name]
+    collection=db[col_name] #collections are different for different user. i will manage them in my mongodb
+    return collection
+
 
 @app.route("/razorpay/webhook", methods=["POST"])
 def razorpay_webhook():

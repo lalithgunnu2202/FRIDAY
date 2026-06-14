@@ -8,3 +8,5 @@ razorpay
 Flask
 langchain-google-genai
 langsmith
+fastapi
+uvicorn

@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeoTech · LangSmith Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+    <style>
+        /* ── CSS VARIABLES & RESET ─────────────────────────────────────── */
+        :root {
+            --bg-body:        #050505;
+            --bg-panel:       #0a0a0a;
+            --bg-card:        #111111;
+            --primary:        #a855f7;
+            --primary-dark:   #7e22ce;
+            --primary-glow:   rgba(168, 85, 247, 0.4);
+            --text-white:     #ffffff;
+            --text-gray:      #a3a3a3;
+            --border:         #262626;
+            --success:        #22c55e;
+            --danger:         #ef4444;
+            --warning:        #f59e0b;
+        }
+
+        *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; font-family:'Inter',sans-serif; }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-white);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        a { text-decoration: none; color: inherit; }
+        ul { list-style: none; }
+        button { border: none; background: none; cursor: pointer; font-family: inherit; }
+
+        /* ── SIDEBAR ───────────────────────────────────────────────────── */
+        .sidebar {
+            width: 260px;
+            background-color: var(--bg-body);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 2rem 1.5rem;
+            height: 100vh;
+            flex-shrink: 0;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo span { background: -webkit-linear-gradient(45deg, #fff, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+        .user-id {
+            font-size: 0.7rem;
+            color: var(--primary);
+            background: rgba(168,85,247,0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            width: fit-content;
+            margin-bottom: 2.5rem;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-menu { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: var(--text-gray);
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .nav-item:hover { background-color: #1a1a1a; color: var(--text-white); }
+        .nav-item.active { background-color: #1e1b2e; color: var(--text-white); border-left: 3px solid var(--primary); }
+        .nav-left { display: flex; align-items: center; gap: 12px; }
+        .nav-icon { font-size: 1.2rem; }
+
+        .badge { font-size: 0.75rem; background-color: #2e1065; color: var(--primary); padding: 2px 8px; border-radius: 6px; font-weight: 600; }
+        .badge.new { background-color: #1e1b2e; color: #c084fc; }
+
+        .logout {
+            margin-top: auto;
+            color: var(--text-gray);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            transition: 0.2s;
+        }
+        .logout:hover { background-color: #1a1a1a; color: var(--danger); }
+
+        /* ── MAIN CONTENT ──────────────────────────────────────────────── */
+        .main-content { flex: 1; padding: 2rem; overflow-y: auto; position: relative; }
+
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+        h1 { font-size: 1.8rem; font-weight: 600; }
+
+        .top-tabs { background-color: var(--bg-card); padding: 4px; border-radius: 20px; border: 1px solid var(--border); display: flex; gap: 4px; }
+        .tab-btn { padding: 8px 24px; border-radius: 16px; font-size: 0.9rem; color: var(--text-gray); transition: 0.3s; }
+        .tab-btn.active { background-color: var(--text-white); color: black; font-weight: 600; }
+        .tab-btn:hover:not(.active) { color: var(--text-white); }
+
+        /* ── LOADING / ERROR STATE ─────────────────────────────────────── */
+        #loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(5,5,5,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            z-index: 100;
+            backdrop-filter: blur(4px);
+            border-radius: 0;
+        }
+        #loading-overlay.hidden { display: none; }
+
+        .spinner {
+            width: 48px; height: 48px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text { color: var(--text-gray); font-size: 0.9rem; }
+
+        #error-banner {
+            background: rgba(239,68,68,0.12);
+            border: 1px solid rgba(239,68,68,0.4);
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #fca5a5;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+        #error-banner.hidden { display: none; }
+        #error-banner i { font-size: 1.3rem; color: var(--danger); flex-shrink: 0; }
+        #error-retry { margin-left: auto; background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.4); color: #fca5a5; padding: 6px 16px; border-radius: 8px; font-size: 0.85rem; cursor: pointer; }
+        #error-retry:hover { background: rgba(239,68,68,0.35); }
+
+        /* ── KPI STAT CARDS ────────────────────────────────────────────── */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: border-color 0.2s;
+        }
+        .kpi-card:hover { border-color: rgba(168,85,247,0.4); }
+
+        .kpi-label { font-size: 0.75rem; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.8px; display: flex; align-items: center; gap: 6px; }
+        .kpi-label i { font-size: 1rem; color: var(--primary); }
+
+        .kpi-value { font-size: 2rem; font-weight: 700; letter-spacing: -1px; line-height: 1; }
+        .kpi-sub { font-size: 0.75rem; color: var(--text-gray); margin-top: 2px; }
+
+        .kpi-skeleton .kpi-value {
+            background: linear-gradient(90deg, #1a1a1a 25%, #262626 50%, #1a1a1a 75%);
+            background-size: 200%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 6px;
+            width: 80px; height: 32px;
+            color: transparent;
+        }
+        @keyframes shimmer { 0%{background-position:200%} 100%{background-position:-200%} }
+
+        /* ── CHART SECTION ─────────────────────────────────────────────── */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+        }
+
+        .chart-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-gray);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .chart-title i { color: var(--primary); }
+
+        .chart-wrapper { position: relative; height: 180px; }
+
+        .empty-chart {
+            height: 180px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: var(--text-gray);
+            font-size: 0.85rem;
+        }
+        .empty-chart i { font-size: 2rem; opacity: 0.4; }
+
+        /* ── PROJECT TABLE ─────────────────────────────────────────────── */
+        .projects-section { margin-bottom: 2rem; }
+
+        .section-header {
+            display: flex;
+            gap: 2rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .section-tab { font-weight: 600; padding-bottom: 1rem; margin-bottom: -1.1rem; cursor: pointer; color: var(--text-gray); }
+        .section-tab.active { color: var(--text-white); border-bottom: 2px solid var(--text-white); }
+
+        .badge-small { background: #2e1065; color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 5px; vertical-align: middle; }
+
+        .table-container { width: 100%; overflow-x: auto; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th { text-align: left; color: #525252; font-weight: 500; padding: 1rem 0; font-size: 0.8rem; text-transform: uppercase; }
+        td { padding: 1.1rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--text-white); }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background-color: rgba(255,255,255,0.02); }
+
+        .asset-cell { display: flex; align-items: center; gap: 12px; }
+
+        .icon-box {
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            background-color: #1a1a1a;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
+            color: #d4d4d4;
+            flex-shrink: 0;
+        }
+
+        .asset-info h4 { font-weight: 500; font-size: 0.9rem; }
+        .asset-info p  { font-size: 0.75rem; color: var(--text-gray); margin-top: 2px; }
+
+        .code-id { background-color: #1a1a1a; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.8rem; color: var(--text-gray); }
+
+        .status-badge { display: inline-flex; align-items: center; gap: 5px; background-color: #2e1065; color: #c084fc; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 500; }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status-dot.done    { background-color: var(--success); }
+        .status-dot.error   { background-color: var(--danger); }
+        .status-dot.running { background-color: var(--warning); animation: pulse 1s ease-in-out infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        .status-badge.error   { background: rgba(239,68,68,0.15); color: #fca5a5; }
+        .status-badge.running { background: rgba(245,158,11,0.15); color: #fcd34d; }
+
+        .value { font-weight: 600; }
+        .positive { color: var(--success); }
+        .neutral  { color: var(--text-white); }
+
+        /* Latency pill */
+        .latency-pill {
+            background: rgba(168,85,247,0.12);
+            color: var(--primary);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-gray);
+        }
+        .empty-state i { font-size: 2.5rem; opacity: 0.3; display: block; margin-bottom: 0.75rem; }
+        .empty-state p { font-size: 0.9rem; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-body); }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* Refresh button */
+        #refresh-btn {
+            background: rgba(168,85,247,0.1);
+            border: 1px solid rgba(168,85,247,0.3);
+            color: var(--primary);
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: 0.2s;
+        }
+        #refresh-btn:hover { background: rgba(168,85,247,0.2); }
+        #refresh-btn.spinning i { animation: spin 0.6s linear infinite; }
+
+        /* ── RESPONSIVE ────────────────────────────────────────────────── */
+        @media (max-width: 1280px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 1024px) { .chart-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 768px) {
+            body { flex-direction: column; overflow: auto; }
+            .sidebar { width: 100%; height: auto; padding: 1rem; flex-direction: row; justify-content: space-between; align-items: center; border-right: none; border-bottom: 1px solid var(--border); }
+            .nav-menu, .user-id, .logout { display: none; }
+            .main-content { padding: 1rem; }
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            th:nth-child(4), td:nth-child(4), th:nth-child(5), td:nth-child(5) { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ── SIDEBAR ──────────────────────────────────────────────────────── -->
+    <aside class="sidebar">
+        <div>
+            <div class="logo">
+                <i class="ri-code-s-slash-line"></i>
+                <span>NeoTech.</span>
+            </div>
+            <div class="user-id" id="sidebar-project-id">Loading…</div>
+
+            <nav class="nav-menu">
+                <a href="#" class="nav-item"><div class="nav-left"><i class="ri-user-line nav-icon"></i> Profile</div></a>
+                <a href="#" class="nav-item active"><div class="nav-left"><i class="ri-dashboard-line nav-icon"></i> Dashboard</div></a>
+                <a href="#" class="nav-item">
+                    <div class="nav-left"><i class="ri-pie-chart-line nav-icon"></i> Analytics</div>
+                    <span class="badge" id="nav-badge-runs">—</span>
+                </a>
+                <a href="#" class="nav-item"><div class="nav-left"><i class="ri-arrow-left-right-line nav-icon"></i> Runs</div></a>
+                <a href="#" class="nav-item">
+                    <div class="nav-left"><i class="ri-bank-card-line nav-icon"></i> Projects</div>
+                    <span class="badge new" id="nav-badge-projects">—</span>
+                </a>
+                <div style="margin-top: 2rem;"></div>
+                <a href="#" class="nav-item"><div class="nav-left"><i class="ri-notification-3-line nav-icon"></i> Notifications</div></a>
+                <a href="#" class="nav-item"><div class="nav-left"><i class="ri-settings-4-line nav-icon"></i> Settings</div></a>
+                <a href="#" class="nav-item"><div class="nav-left"><i class="ri-question-line nav-icon"></i> Help</div></a>
+            </nav>
+        </div>
+        <button class="logout"><i class="ri-logout-box-r-line"></i> Log Out</button>
+    </aside>
+
+    <!-- ── MAIN CONTENT ─────────────────────────────────────────────────── -->
+    <main class="main-content">
+
+        <!-- Loading overlay -->
+        <div id="loading-overlay">
+            <div class="spinner"></div>
+            <span class="loading-text">Fetching LangSmith data…</span>
+        </div>
+
+        <!-- Error banner -->
+        <div id="error-banner" class="hidden">
+            <i class="ri-error-warning-line"></i>
+            <span id="error-message">Unable to connect to the backend.</span>
+            <button id="error-retry"><i class="ri-refresh-line"></i> Retry</button>
+        </div>
+
+        <!-- Header -->
+        <header>
+            <h1>Dashboard</h1>
+            <div style="display:flex; gap:12px; align-items:center;">
+                <button id="refresh-btn"><i class="ri-refresh-line"></i> Refresh</button>
+                <div class="top-tabs">
+                    <button class="tab-btn active">Portfolio</button>
+                    <button class="tab-btn">History</button>
+                    <button class="tab-btn">Analytics</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- ── KPI CARDS ──────────────────────────────────────────────── -->
+        <div class="kpi-grid">
+            <div class="kpi-card kpi-skeleton" id="card-tokens">
+                <div class="kpi-label"><i class="ri-braces-line"></i> Total Tokens</div>
+                <div class="kpi-value" id="kpi-tokens">—</div>
+                <div class="kpi-sub" id="kpi-tokens-sub">prompt + completion</div>
+            </div>
+            <div class="kpi-card kpi-skeleton" id="card-cost">
+                <div class="kpi-label"><i class="ri-money-dollar-circle-line"></i> Total Cost</div>
+                <div class="kpi-value" id="kpi-cost">—</div>
+                <div class="kpi-sub">USD across all projects</div>
+            </div>
+            <div class="kpi-card kpi-skeleton" id="card-runs">
+                <div class="kpi-label"><i class="ri-flashlight-line"></i> Total Runs</div>
+                <div class="kpi-value" id="kpi-runs">—</div>
+                <div class="kpi-sub" id="kpi-runs-sub">across all projects</div>
+            </div>
+            <div class="kpi-card kpi-skeleton" id="card-latency">
+                <div class="kpi-label"><i class="ri-timer-line"></i> Avg Latency</div>
+                <div class="kpi-value" id="kpi-latency">—</div>
+                <div class="kpi-sub">p50 median across projects</div>
+            </div>
+        </div>
+
+        <!-- ── CHARTS ─────────────────────────────────────────────────── -->
+        <div class="chart-grid">
+            <div class="chart-card">
+                <div class="chart-title"><i class="ri-timer-flash-line"></i> Latency Over Time (ms)</div>
+                <div class="chart-wrapper" id="latency-chart-wrap">
+                    <canvas id="latencyChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title"><i class="ri-bar-chart-grouped-line"></i> Token Usage Per Run</div>
+                <div class="chart-wrapper" id="token-chart-wrap">
+                    <canvas id="tokenChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── RUNS TABLE ─────────────────────────────────────────────── -->
+        <section class="projects-section">
+            <div class="section-header">
+                <div class="section-tab active">Recent Runs <span class="badge-small" id="run-count-badge">…</span></div>
+                <div class="section-tab">Projects</div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Run / Type</th>
+                            <th>Started</th>
+                            <th>Latency</th>
+                            <th>Tokens</th>
+                            <th>Cost (USD)</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="runs-tbody">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+                <div id="runs-empty" class="empty-state hidden">
+                    <i class="ri-inbox-line"></i>
+                    <p>No runs found in the last 7 days.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+    (() => {
+        // ── CONFIG ──────────────────────────────────────────────────────
+        const API_URL = 'http://localhost:8000/api/stats';
+
+        // ── DOM refs ────────────────────────────────────────────────────
+        const $  = id => document.getElementById(id);
+        const overlay       = $('loading-overlay');
+        const errorBanner   = $('error-banner');
+        const errorMsg      = $('error-message');
+        const refreshBtn    = $('refresh-btn');
+
+        // ── Chart instances (kept so we can destroy & re-create) ────────
+        let latencyChart = null;
+        let tokenChart   = null;
+
+        // ── Helpers ─────────────────────────────────────────────────────
+        function fmtNum(n) {
+            if (n === null || n === undefined) return '—';
+            if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
+            if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'k';
+            return String(n);
+        }
+
+        function fmtCost(v) {
+            if (v === null || v === undefined) return '—';
+            return '$' + Number(v).toFixed(v < 0.01 ? 6 : 4);
+        }
+
+        function fmtMs(ms) {
+            if (ms === null || ms === undefined) return '—';
+            return ms >= 1000 ? (ms / 1000).toFixed(2) + 's' : ms + ' ms';
+        }
+
+        function fmtDate(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        // ── State UI ────────────────────────────────────────────────────
+        function showLoading() {
+            overlay.classList.remove('hidden');
+            errorBanner.classList.add('hidden');
+        }
+
+        function hideLoading() {
+            overlay.classList.add('hidden');
+        }
+
+        function showError(msg) {
+            hideLoading();
+            errorMsg.textContent = msg;
+            errorBanner.classList.remove('hidden');
+        }
+
+        function setRefreshSpinning(on) {
+            refreshBtn.classList.toggle('spinning', on);
+        }
+
+        // ── Remove skeleton class once data arrives ──────────────────────
+        function removeSkeleton() {
+            document.querySelectorAll('.kpi-skeleton').forEach(el => el.classList.remove('kpi-skeleton'));
+        }
+
+        // ── Render KPI cards ─────────────────────────────────────────────
+        function renderSummary(summary) {
+            $('kpi-tokens').textContent   = fmtNum(summary.total_tokens);
+            $('kpi-cost').textContent     = fmtCost(summary.total_cost_usd);
+            $('kpi-runs').textContent     = fmtNum(summary.total_runs);
+            $('kpi-latency').textContent  = fmtMs(summary.avg_latency_ms);
+            $('kpi-runs-sub').textContent = `across ${summary.project_count} project${summary.project_count !== 1 ? 's' : ''}`;
+
+            // Sidebar badges
+            $('nav-badge-runs').textContent     = fmtNum(summary.total_runs);
+            $('nav-badge-projects').textContent = summary.project_count;
+            $('sidebar-project-id').textContent = `${summary.project_count} project${summary.project_count !== 1 ? 's' : ''}`;
+        }
+
+        // ── Chart defaults ───────────────────────────────────────────────
+        const CHART_DEFAULTS = {
+            plugins: { legend: { labels: { color: '#a3a3a3', font: { size: 11 } } }, tooltip: { mode: 'index', intersect: false } },
+            scales: {
+                x: { ticks: { color: '#525252', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                y: { ticks: { color: '#525252', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            },
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 600 },
+        };
+
+        // ── Render charts ────────────────────────────────────────────────
+        function renderLatencyChart(data) {
+            const wrap = $('latency-chart-wrap');
+            if (!data || data.length === 0) {
+                wrap.innerHTML = '<div class="empty-chart"><i class="ri-line-chart-line"></i><span>Not enough run data yet</span></div>';
+                return;
+            }
+            if (latencyChart) { latencyChart.destroy(); latencyChart = null; }
+            wrap.innerHTML = '<canvas id="latencyChart"></canvas>';
+
+            latencyChart = new Chart($('latencyChart'), {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.label),
+                    datasets: [{
+                        label: 'Latency (ms)',
+                        data: data.map(d => d.latency_ms),
+                        borderColor: '#a855f7',
+                        backgroundColor: 'rgba(168,85,247,0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#a855f7',
+                    }],
+                },
+                options: {
+                    ...CHART_DEFAULTS,
+                    scales: {
+                        ...CHART_DEFAULTS.scales,
+                        y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'ms', color: '#525252' } },
+                    },
+                },
+            });
+        }
+
+        function renderTokenChart(data) {
+            const wrap = $('token-chart-wrap');
+            if (!data || data.length === 0) {
+                wrap.innerHTML = '<div class="empty-chart"><i class="ri-bar-chart-2-line"></i><span>Not enough run data yet</span></div>';
+                return;
+            }
+            if (tokenChart) { tokenChart.destroy(); tokenChart = null; }
+            wrap.innerHTML = '<canvas id="tokenChart"></canvas>';
+
+            tokenChart = new Chart($('tokenChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.map(d => d.label),
+                    datasets: [
+                        {
+                            label: 'Prompt',
+                            data: data.map(d => d.prompt),
+                            backgroundColor: 'rgba(168,85,247,0.6)',
+                            borderRadius: 4,
+                        },
+                        {
+                            label: 'Completion',
+                            data: data.map(d => d.completion),
+                            backgroundColor: 'rgba(34,197,94,0.5)',
+                            borderRadius: 4,
+                        },
+                    ],
+                },
+                options: {
+                    ...CHART_DEFAULTS,
+                    scales: {
+                        ...CHART_DEFAULTS.scales,
+                        x: { ...CHART_DEFAULTS.scales.x, stacked: true },
+                        y: { ...CHART_DEFAULTS.scales.y, stacked: true, title: { display: true, text: 'tokens', color: '#525252' } },
+                    },
+                },
+            });
+        }
+
+        // ── Render runs table ────────────────────────────────────────────
+        function renderRuns(runs) {
+            const tbody  = $('runs-tbody');
+            const empty  = $('runs-empty');
+            const badge  = $('run-count-badge');
+
+            badge.textContent = runs.length;
+
+            if (runs.length === 0) {
+                tbody.innerHTML = '';
+                empty.classList.remove('hidden');
+                return;
+            }
+            empty.classList.add('hidden');
+
+            const statusClass = s => s === 'Done' ? 'done' : s === 'Error' ? 'error' : 'running';
+
+            tbody.innerHTML = runs.map(r => {
+                const tokens = r.usage?.total_tokens
+                    ? fmtNum(r.usage.total_tokens)
+                    : '—';
+                return `
+                <tr>
+                    <td>
+                        <div class="asset-cell">
+                            <div class="icon-box"><i class="${r.icon}"></i></div>
+                            <div class="asset-info">
+                                <h4>${escHtml(r.name)}</h4>
+                                <p>${r.run_type}</p>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${fmtDate(r.start_time)}</td>
+                    <td>${r.latency_ms !== null ? `<span class="latency-pill">${fmtMs(r.latency_ms)}</span>` : '—'}</td>
+                    <td class="value neutral">${tokens}</td>
+                    <td class="value ${r.cost_usd > 0 ? 'positive' : 'neutral'}">${r.cost_usd > 0 ? fmtCost(r.cost_usd) : '—'}</td>
+                    <td>
+                        <span class="status-badge ${statusClass(r.status)}">
+                            <span class="status-dot ${statusClass(r.status)}"></span>
+                            ${r.status}
+                        </span>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function escHtml(str) {
+            return String(str)
+                .replace(/&/g,'&amp;')
+                .replace(/</g,'&lt;')
+                .replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;');
+        }
+
+        // ── Main fetch ───────────────────────────────────────────────────
+        async function fetchStats() {
+            showLoading();
+            setRefreshSpinning(true);
+
+            try {
+                const res = await fetch(API_URL, { headers: { 'Accept': 'application/json' } });
+
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.detail || `Server returned ${res.status}`);
+                }
+
+                const data = await res.json();
+
+                renderSummary(data.summary);
+                renderLatencyChart(data.latency_chart);
+                renderTokenChart(data.token_chart);
+                renderRuns(data.runs);
+                removeSkeleton();
+                hideLoading();
+                errorBanner.classList.add('hidden');
+
+            } catch (err) {
+                const isNetErr = err instanceof TypeError; // fetch failed (CORS/network)
+                const hint = isNetErr
+                    ? 'Could not reach the backend. Is langsmith_backend.py running on port 8000?'
+                    : err.message;
+                showError(hint);
+            } finally {
+                setRefreshSpinning(false);
+            }
+        }
+
+        // ── Tab switching (cosmetic) ──────────────────────────────────────
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // ── Refresh & retry ──────────────────────────────────────────────
+        refreshBtn.addEventListener('click', fetchStats);
+        $('error-retry').addEventListener('click', fetchStats);
+
+        // ── Boot ─────────────────────────────────────────────────────────
+        fetchStats();
+    })();
+    </script>
+
+</body>
+</html>
