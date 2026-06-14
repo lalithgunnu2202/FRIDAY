@@ -11,7 +11,8 @@ from langchain_openrouter import ChatOpenRouter
 from enum import Enum
 from buy_agent import buy_response
 from payment_agent import pay_response
-from dependencies import llm, State,products, short_term_memory, Intent,productQuery
+from dependencies import llm, State,products, short_term_memory, Intent,productQuery, no_trace
+from langsmith import traceable, tracing_context
 
 
 # load_dotenv()
@@ -155,6 +156,7 @@ def follow_up(query,state:State):
 
 # print(final_prods("show product a5"))
 # sales_agent.py — agent() must check if user is mid-flow
+# @traceable(name="Entry agent")
 def agent(query, user_id: str):
     state = {
         "messages": [],
@@ -176,7 +178,7 @@ def agent(query, user_id: str):
         return pay_response(state, resume_value=query)
 
     if memory and memory.get("buy_flow_active"):
-        result = structured_llm.invoke(query)
+        # result = structured_llm.invoke(query)
         # if result.intent == Intent.BUY_PRODUCT:
         short_term_memory.update(user_id, buy_flow_active=False)
             # return buy_response(state)

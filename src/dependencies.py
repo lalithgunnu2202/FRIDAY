@@ -13,13 +13,17 @@ from enum import Enum
 from langgraph.types import Command
 from typing import Literal, Optional
 from langgraph.graph.state import StateGraph,START,END
-
+from langsmith import traceable, tracing_context
 
 load_dotenv()
 os.environ["OPENROUTER_API_KEY"]=os.getenv("CUSTOM_API_KEY")
 os.environ["GEMINI_API_KEY"]=os.getenv("GEMINI_API_KEY")
 
-
+def no_trace(func):
+    def wrapper(*args, **kwargs):
+        with tracing_context(enabled=False):
+            return func(*args, **kwargs)
+    return wrapper
 
 # from sales_agent import agent
 # from buy_agent import buy_agent
@@ -30,12 +34,13 @@ os.environ["GEMINI_API_KEY"]=os.getenv("GEMINI_API_KEY")
 llm = init_chat_model(model="openai/gpt-oss-120b:free", model_provider="openrouter")
 print(llm)
 
+@no_trace
 def get_collection(db_name:str,col_name:str)->Collection:
     client = MongoClient(os.getenv("MONGO_URI"), serverSelectionTimeoutMS=5000)
     db=client[db_name]
     collection=db[col_name] #collections are different for different user. i will manage them in my mongodb
     return collection
-    
+
 class MemoryManager:
     def __init__(self, collection):
         self.collection = collection
@@ -51,6 +56,7 @@ class MemoryManager:
 
     def get(self, user_id):
         return self.collection.find_one({"user_id": user_id})  #should use **state["memory"] while i am willing to update only particular field
+
 
 class Intent(str, Enum):
     BROWSE_PRODUCTS="get_products"

@@ -1,4 +1,4 @@
-from dependencies import State,products, short_term_memory,get_collection
+from dependencies import State,products, short_term_memory,get_collection, no_trace
 from langgraph.types import interrupt
 import razorpay
 from dotenv import load_dotenv
@@ -6,8 +6,9 @@ import os
 from langchain_core.messages import AIMessage
 from langgraph.graph import StateGraph,START,END
 from langgraph.checkpoint.memory import InMemorySaver
+from langsmith import traceable
 
-
+@traceable(name="order id to pay msg")
 def order_details(state: State):
     order_id = interrupt("Please enter your order-id (ORD-XXXXXX) to proceed for the payment")
     short_term_memory.update(state.get("user_id"), buy_flow_active=False, pay_flow_active=False)
@@ -33,7 +34,7 @@ client = razorpay.Client(
     )
 )
 
-
+@traceable(name="Created Payment link")
 def create_payment_link(
     order_id: str,
     amount: float,
@@ -65,6 +66,7 @@ def create_payment_link(
         "payment_url": payment_link["short_url"]
     }
 
+@traceable(name="payment link and payment")
 def payment_agent(state: State):
     order_id = state["order_id"]
     
@@ -105,7 +107,7 @@ def payment_agent(state: State):
     #     {"order_id": order_id},
     #     {"$set": {"chat_id": state["chat_id"]}}
     # )
-
+@no_trace
 def init_state(state: State):
     return {"user_id": state.get("user_id")}
 pay_build=StateGraph(State)
@@ -122,6 +124,7 @@ pay_graph=pay_build.compile(checkpointer=InMemorySaver())
 
 from langgraph.types import Command
 
+@traceable(name="Payment Agent called")
 def pay_response(state: State, resume_value: str = None):
     config = {"configurable": {"thread_id": state.get("user_id")}}
     user_id = state.get("user_id")

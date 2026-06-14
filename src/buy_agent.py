@@ -1,12 +1,13 @@
-from dependencies import State,products, short_term_memory
+from dependencies import State,products, short_term_memory, no_trace
 from langgraph.types import interrupt
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
 from langchain_core.messages import HumanMessage, AIMessage
 from payment_agent import create_payment_link
+from langsmith import traceable
 
 # VARIANTS=["size","color"]
-
+@traceable(name="Choosing variants")
 def choose_variants(state: State):
     user_id = state.get("user_id")
     memory = short_term_memory.get(user_id)
@@ -23,7 +24,7 @@ def choose_variants(state: State):
     selected_var = {}
     available_variants = prod.get("variants", {})
     for variant_name, options in available_variants.items():
-        resp = interrupt(f"choose a {variant_name} from the available {options}")
+        resp = interrupt(f"choose a {variant_name} from the available {options}. \nINFO: In case of one size available type 'yes' to continue.")
         selected_var[variant_name] = resp
     return {"variants": selected_var, "user_id": user_id}
 
@@ -84,6 +85,8 @@ def approve(state:State):
         "messages":[HumanMessage(content=approval)]
     }
 import uuid
+
+@traceable(name="collecting address")
 def take_address(state:State):
     from dependencies import get_collection
     orders=get_collection("Spes-AI","Orders")
@@ -122,19 +125,21 @@ def take_address(state:State):
         "payment_url":payment["payment_url"]
     }
 
-
+@traceable(name="Cancelling Order")
 def cancel_order(state:State):
     msg=f"Sorry to know you want to cancel the order. Feel free to get served by US."
     return {
         "messages":[AIMessage(content=msg)]
     }
 
+@no_trace
 def buy_router(state:State):
     if state["approval_status"]:
         return "take_address"
     else:
         return "cancel_order"
 
+@no_trace
 def init_state(state: State):
     return {"user_id": state.get("user_id")}
 
@@ -164,6 +169,7 @@ buy_graph = builder.compile(
 # buy_agent.py
 from langgraph.types import Command
 
+@traceable(name="Buy Agent")
 def buy_response(state: State, resume_value: str = None):
     config = {"configurable": {"thread_id": state.get("user_id")}}
     user_id = state.get("user_id")
