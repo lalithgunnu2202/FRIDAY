@@ -92,3 +92,4 @@ class State(TypedDict, total=False):      # ← add total=False
     approval_status: bool
     order_id: Optional[str]
     payment_url: Optional[str]
+    cancel_status:bool

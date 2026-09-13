@@ -109,7 +109,7 @@ def payment_agent(state: State):
     # )
 @no_trace
 def init_state(state: State):
-    return {"user_id": state.get("user_id")}
+    return {"user_id": state.get("user_id"), "cancel_status":False}
 pay_build=StateGraph(State)
 
 pay_build.add_node("init_state", init_state)

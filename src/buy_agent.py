@@ -6,92 +6,37 @@ from langchain_core.messages import HumanMessage, AIMessage
 from payment_agent import create_payment_link
 from langsmith import traceable
 
-# VARIANTS=["size","color"]
-@traceable(name="Choosing variants")
-def choose_variants(state: State):
+@traceable(name="Process Order Approval")
+def approve(state: State):
     user_id = state.get("user_id")
     memory = short_term_memory.get(user_id)
 
     if not memory or not memory.get("prod_id"):
         return {"messages": [AIMessage(content="Session expired. Please select a product again.")],
-                "user_id": user_id}
+                "user_id": user_id, "approval_status": False}
 
     prod = products.find_one({"prod_id": memory["prod_id"]}, {"_id": 0})
     if not prod:
         return {"messages": [AIMessage(content="Product no longer available.")],
-                "user_id": user_id}
+                "user_id": user_id, "approval_status": False}
 
-    selected_var = memory.get("variants", {})
-    available_variants = prod.get("variants", {})
-    for variant_name, options in available_variants.items():
-        if variant_name not in selected_var:
-            resp = interrupt(f"choose a {variant_name} from the available {options}. \nINFO: In case of one size available type 'yes' to continue.")
-            selected_var[variant_name] = resp
-            short_term_memory.update(user_id, variants=selected_var)
-    return {"variants": selected_var, "user_id": user_id}
+    price = prod.get("price")
 
-def price_decider(state: State):
-    memory = short_term_memory.get(state.get("user_id"))
-    if not memory or not memory.get("prod_id"):  # ← guard
-        return {"price": None}
-    prod_id = memory["prod_id"]
-
-    prod = products.find_one(
-        {"prod_id": prod_id},
-        {"_id": 0}
+    approval = interrupt(
+        f"""Do you want to proceed with order of \n Product Name: {prod.get("title", "Product")} \nPrice: {price} \nTo proceed with order type "yes" in the chat"""
     )
-
-    if not prod:
-        return {
-            "price": None
-        }
-
-    if prod.get("variants"):
-
-        selected = state.get("variants", {})
-        variant_data = prod.get("variants", {})
-
-        price = prod["price"]
-
-        for variant_name, selected_value in selected.items():
-
-            price_key = f"price_by_{variant_name}"
-
-            if price_key in variant_data:
-                price = variant_data[price_key].get(
-                    selected_value,
-                    price
-                )
-
-        return {
-            "price": price
-        }
-
+    approved = approval.lower().strip() in ["yes", "Yes"]
     return {
-        "price": prod["price"]
-    }
-
-def approve(state:State):
-    memory=short_term_memory.get(state.get("user_id"))
-    prod_id=memory["prod_id"]
-    prod = products.find_one(
-        {"prod_id": prod_id},
-        {"_id": 0}
-    )
-    approval=interrupt(
-        f"""Do you want to proceed with order of \n Product Name: {prod["title"]} \nPrice: {state['price']} \nTo proceed with order type "yes" in the chat"""
-    )
-    approved=approval.lower().strip() in ["yes","Yes"]
-    return {
-        "approval_status":approved,
-        "messages":[HumanMessage(content=approval)]
+        "price": price,
+        "approval_status": approved,
+        "messages": [HumanMessage(content=approval)]
     }
 import uuid
 
 @traceable(name="collecting address")
 def take_address(state:State):
     from dependencies import get_collection
-    orders=get_collection("Spes-AI","Orders")
+    orders=get_collection("Spes-AI","Orders")     
     address=interrupt("Enter the address in this format\nName: John Doe\n"
         "Phone: 9876543210\n"
         "Address: 123 Main St\n"
@@ -130,41 +75,89 @@ def take_address(state:State):
 @traceable(name="Cancelling Order")
 def cancel_order(state:State):
     msg=f"Sorry to know you want to cancel the order. Feel free to get served by US."
+    short_term_memory.update(state["user_id"], buy_flow_active=False)
     return {
         "messages":[AIMessage(content=msg)]
     }
 
 @no_trace
-def buy_router(state:State):
-    if state["approval_status"]:
-        return "take_address"
-    else:
+def cancel_router(state: State):
+    if state["cancel_status"]:
         return "cancel_order"
+
+    return "continue"
 
 @no_trace
 def init_state(state: State):
     user_id = state.get("user_id")
-    short_term_memory.update(user_id, variants={})
-    return {"user_id": user_id}
+
+    short_term_memory.update(
+        user_id,
+        variants={}
+    )
+
+    return {
+        "user_id": user_id,
+        "cancel_status": False
+    }
+
 
 builder = StateGraph(State)
+
+# Nodes
 builder.add_node("init_state", init_state)
-builder.add_node("choose_variants", choose_variants)
-builder.add_node("price_decider", price_decider)
 builder.add_node("approve", approve)
 builder.add_node("take_address", take_address)
 builder.add_node("cancel_order", cancel_order)
 
-builder.add_edge(START,"init_state")
-builder.add_edge("init_state", "choose_variants")
-builder.add_edge("choose_variants", "price_decider")
-builder.add_edge("price_decider", "approve")
-builder.add_conditional_edges("approve",buy_router,{
-    "take_address":"take_address",
-    "cancel_order":"cancel_order"
-})
+
+# START
+builder.add_edge(START, "init_state")
+
+
+# init_state → cancellation check
+builder.add_conditional_edges(
+    "init_state",
+    cancel_router,
+    {
+        "continue": "approve",
+        "cancel_order": "cancel_order"
+    }
+)
+
+
+# approve → either normal flow or cancellation
+def buy_router(state: State):
+    if state.get("approval_status"):
+        return "take_address"
+
+    return "cancel_order"
+
+
+builder.add_conditional_edges(
+    "approve",
+    buy_router,
+    {
+        "take_address": "take_address",
+        "cancel_order": "cancel_order"
+    }
+)
+
+
+# take_address → cancellation check
+builder.add_conditional_edges(
+    "take_address",
+    cancel_router,
+    {
+        "continue": END,
+        "cancel_order": "cancel_order"
+    }
+)
+
+
+# Cancellation terminates the graph
 builder.add_edge("cancel_order", END)
-builder.add_edge("take_address", END)
+
 
 buy_graph = builder.compile(
     checkpointer=InMemorySaver()
