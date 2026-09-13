@@ -21,11 +21,13 @@ def choose_variants(state: State):
         return {"messages": [AIMessage(content="Product no longer available.")],
                 "user_id": user_id}
 
-    selected_var = {}
+    selected_var = memory.get("variants", {})
     available_variants = prod.get("variants", {})
     for variant_name, options in available_variants.items():
-        resp = interrupt(f"choose a {variant_name} from the available {options}. \nINFO: In case of one size available type 'yes' to continue.")
-        selected_var[variant_name] = resp
+        if variant_name not in selected_var:
+            resp = interrupt(f"choose a {variant_name} from the available {options}. \nINFO: In case of one size available type 'yes' to continue.")
+            selected_var[variant_name] = resp
+            short_term_memory.update(user_id, variants=selected_var)
     return {"variants": selected_var, "user_id": user_id}
 
 def price_decider(state: State):
@@ -141,7 +143,9 @@ def buy_router(state:State):
 
 @no_trace
 def init_state(state: State):
-    return {"user_id": state.get("user_id")}
+    user_id = state.get("user_id")
+    short_term_memory.update(user_id, variants={})
+    return {"user_id": user_id}
 
 builder = StateGraph(State)
 builder.add_node("init_state", init_state)
@@ -180,8 +184,10 @@ def buy_response(state: State, resume_value: str = None):
         else:
             result = buy_graph.invoke(state, config=config)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         short_term_memory.update(user_id, buy_flow_active=False)
-        result = buy_graph.invoke(state, config=config)
+        return [f"Sorry, an error occurred processing your request: {str(e)}"]
 
     if "__interrupt__" in result:
         short_term_memory.update(user_id, buy_flow_active=True)  # still in progress

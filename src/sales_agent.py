@@ -166,6 +166,16 @@ def agent(query, user_id: str):
     }
 
     memory = short_term_memory.get(user_id)
+
+    if memory is None:
+        memory = {
+            "user_id": user_id,
+            "prod_id": "c5", #change this according to the trending product.
+            "pay_flow_active": False,
+            "buy_flow_active": False
+        }
+
+        short_term_memory.update(**memory)
     query_2=f"""this is previous product id {memory.get("prod_id")}\nthis is current query:{query}\nfor any query answer in the specified format only."""
     # Check active flows ONLY if not a payment intent
     # (prevents stale buy_flow from hijacking payment)

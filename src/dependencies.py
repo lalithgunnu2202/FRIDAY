@@ -31,7 +31,7 @@ def no_trace(func):
 # from support_agent import support_agent
 
 
-llm = init_chat_model(model="openai/gpt-oss-120b:free", model_provider="openrouter")
+llm = init_chat_model(model="openrouter/free", model_provider="openrouter")
 print(llm)
 
 @no_trace
